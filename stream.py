@@ -1,10 +1,5 @@
 import streamlit as st
 import pandas as pd
-<<<<<<< HEAD
-import time
-import os
-import subprocess
-=======
 import os
 import cv2
 import numpy as np
@@ -16,193 +11,23 @@ import plotly.express as px
 # ==============================
 # CONFIG
 # ==============================
-MODEL_PATH = r"C:\Users\Chris\Downloads\WaterHyasim_\mr89.pt"
+MODEL_PATH = r"C:\Users\Win10\OneDrive\Documents\WaterHyacinth\Mr92.pt"
 FRAME_SIZE = 640
 INFERENCE_INTERVAL = 12
 THRESHOLD = 40  # Alert threshold updated to 40%
 DATA_PATH = "analytics.csv"
 DASHBOARD_UPDATE_INTERVAL = 10  # Seconds between dashboard updates
->>>>>>> b0d1189 (Commit WaterHyacinth)
 
 # ==============================
 # PAGE CONFIG
 # ==============================
-<<<<<<< HEAD
+
 st.set_page_config(
-    page_title="HyacinthEye Dashboard",
+    page_title="Hyasim Dashboard",
     layout="wide"
 )
 
-# ==============================
-# CUSTOM CSS (UI UPGRADE)
-# ==============================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-    background-color: #D9FFF5;
-    color: #2D3047;
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background-color: #2D3047;
-}
-section[data-testid="stSidebar"] * {
-    color: white !important;
-}
-
-/* Cards */
-.card {
-    background-color: #F7F7FF;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.05);
-}
-
-/* Metric Highlight */
-.metric {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1B9AAA;
-}
-
-/* Status colors */
-.safe {
-    color: green;
-    font-weight: bold;
-}
-.alert {
-    color: red;
-    font-weight: bold;
-}
-
-/* Buttons */
-.stButton>button {
-    background-color: #1B9AAA;
-    color: white;
-    border-radius: 8px;
-}
-.stButton>button:hover {
-    background-color: #148a96;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ==============================
-# HEADER
-# ==============================
-st.markdown("<h1 style='text-align:center;'>🌿 HyacinthEye</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;'>Water Hyacinth Monitoring System</p>", unsafe_allow_html=True)
-
-DATA_PATH = "analytics.csv"
-
-# ==============================
-# SIDEBAR
-# ==============================
-st.sidebar.header("Control Panel")
-
-refresh_rate = st.sidebar.slider("Refresh Rate (sec)", 1, 10, 2)
-
-if st.sidebar.button("▶ Start Detection"):
-    subprocess.Popen(["python", r"C:\Users\Win10\OneDrive\Documents\WaterHyacinth\camera.py"])
-
-if st.sidebar.button("⏹ Stop Detection"):
-    subprocess.call("taskkill /f /im python.exe", shell=True)
-
-# ==============================
-# LOAD DATA
-# ==============================
-def load_data():
-    if os.path.exists(DATA_PATH):
-        df = pd.read_csv(DATA_PATH)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        return df
-    return pd.DataFrame(columns=["timestamp","coverage","fps","biomass"])
-
-df = load_data()
-
-# ==============================
-# MAIN DASHBOARD
-# ==============================
-if df.empty:
-    st.warning("No data available yet...")
-else:
-    latest = df.iloc[-1]
-
-    # STATUS
-    status = "SAFE" if latest["coverage"] < 20 else "ALERT"
-    status_class = "safe" if status == "SAFE" else "alert"
-
-    # ==============================
-    # METRICS ROW
-    # ==============================
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.markdown(f"<div class='card'><p>🌿 Coverage</p><h2 class='metric'>{latest['coverage']:.2f}%</h2></div>", unsafe_allow_html=True)
-    col2.markdown(f"<div class='card'><p>⚖️ Biomass</p><h2 class='metric'>{latest['biomass']:.2f}</h2></div>", unsafe_allow_html=True)
-    col3.markdown(f"<div class='card'><p>⚡ FPS</p><h2 class='metric'>{latest['fps']:.2f}</h2></div>", unsafe_allow_html=True)
-    col4.markdown(f"<div class='card'><p>Status</p><h2 class='{status_class}'>{status}</h2></div>", unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ==============================
-    # CHARTS
-    # ==============================
-    colA, colB = st.columns(2)
-
-    with colA:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("📈 Coverage Over Time")
-        st.line_chart(df.set_index("timestamp")["coverage"])
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with colB:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.subheader("📊 Biomass Over Time")
-        st.line_chart(df.set_index("timestamp")["biomass"])
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ==============================
-    # FPS CHART
-    # ==============================
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("⚡ FPS Performance")
-    st.line_chart(df.set_index("timestamp")["fps"])
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # ==============================
-    # SUMMARY
-    # ==============================
-    st.subheader("Summary Statistics")
-
-    col5, col6, col7 = st.columns(3)
-
-    col5.metric("Avg Coverage", f"{df['coverage'].mean():.2f}%")
-    col6.metric("Avg Biomass", f"{df['biomass'].mean():.2f}")
-    col7.metric("Avg FPS", f"{df['fps'].mean():.2f}")
-
-    # ==============================
-    # RAW DATA
-    # ==============================
-    with st.expander("View Raw Data"):
-        st.dataframe(df.tail(50))
-
-# ==============================
-# AUTO REFRESH (STREAMLIT SAFE)
-# ==============================
-time.sleep(refresh_rate)
-st.rerun()
-=======
-st.set_page_config(page_title="HyacinthEye", layout="wide")
-
-# ==============================
-# SESSION STATE INITIALIZATION
-# ==============================
-if "run_camera" not in st.session_state:
-    st.session_state.run_camera = False
+st.session_state.run_camera = False
 
 # ==============================
 # LOAD MODEL & DATA
@@ -230,7 +55,7 @@ def log_data(coverage, fps):
 # ==============================
 # UI HEADER & TABS (DRAWN ONCE)
 # ==============================
-st.title("HyacinthEye Monitoring System")
+st.title("Hyasim Monitoring System")
 
 # Merged Image and Video into a single "Media Upload" tab
 tab1, tab2, tab3 = st.tabs([
@@ -282,22 +107,154 @@ def update_dashboard_ui():
     # 3. Update Dataframe
     data_box.dataframe(df.tail(50), use_container_width=True)
 
+
 # ==============================
-# TAB 2: MEDIA UPLOAD PLACEHOLDER
+# TAB 2: MEDIA UPLOAD (COMPLETED)
 # ==============================
 with tab2:
     st.subheader("Upload Media for Detection")
-    
-    # A sleek radio button to toggle between Image and Video modes
+
     media_type = st.radio("Select Media Type:", ["🖼️ Image", "🎬 Video"], horizontal=True)
-    
     st.write("---")
 
+    # ==============================
+    # IMAGE UPLOAD
+    # ==============================
     if media_type == "🖼️ Image":
-        st.info("Image upload functionality coming soon. You will be able to upload a single image to test hyacinth detection.")
-    else:
-        st.info("Video processing coming soon. You will be able to upload an mp4 file to run batch inference.")
+        uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
+        if uploaded_image is not None:
+            file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
+            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            image = cv2.resize(image, (FRAME_SIZE, FRAME_SIZE))
+
+            if st.button("Run Detection on Image"):
+                results = model(image, conf=0.5, imgsz=640, verbose=False)
+
+                mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+
+                for r in results:
+                    if r.masks is not None:
+                        masks = r.masks.data.cpu().numpy()
+                        for m in masks:
+                            m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
+                            mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
+
+                # Morphological cleaning
+                kernel = np.ones((5, 5), np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+                coverage = (np.sum(mask) / mask.size) * 100
+
+                color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
+
+                overlay = image.copy()
+                overlay[mask == 1] = color
+                overlay = cv2.addWeighted(image, 1, overlay, 0.5, 0)
+
+                status = "ALERT" if coverage > THRESHOLD else "SAFE"
+
+                cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                cv2.putText(overlay, f"Status: {status}", (20, 80),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+                st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB), use_container_width=True)
+                st.success(f"Coverage: {coverage:.2f}% | Status: {status}")
+
+    # ==============================
+    # VIDEO UPLOAD
+    # ==============================
+    else:
+        uploaded_video = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
+
+        if uploaded_video is not None:
+            temp_input_path = "temp_input.mp4"
+            temp_output_path = "temp_output.mp4"
+
+            # Save uploaded video
+            with open(temp_input_path, "wb") as f:
+                f.write(uploaded_video.read())
+
+            if st.button("Run Detection on Video"):
+                cap = cv2.VideoCapture(temp_input_path)
+
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(
+                    temp_output_path,
+                    fourcc,
+                    20.0,
+                    (FRAME_SIZE, FRAME_SIZE)
+                )
+
+                frame_count = 0
+                progress_bar = st.progress(0)
+
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
+                    frame_count += 1
+
+                    # Run inference every N frames
+                    if frame_count % INFERENCE_INTERVAL == 0:
+                        results = model(frame, conf=0.5, imgsz=640, verbose=False)
+
+                        mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+
+                        for r in results:
+                            if r.masks is not None:
+                                masks = r.masks.data.cpu().numpy()
+                                for m in masks:
+                                    m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
+                                    mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
+
+                        kernel = np.ones((5, 5), np.uint8)
+                        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+                        coverage = (np.sum(mask) / mask.size) * 100
+                    else:
+                        coverage = 0
+
+                    color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
+
+                    overlay = frame.copy()
+                    overlay[mask == 1] = color
+                    overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
+
+                    status = "ALERT" if coverage > THRESHOLD else "SAFE"
+
+                    cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                    cv2.putText(overlay, f"Status: {status}", (20, 80),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
+                    out.write(overlay)
+
+                    progress_bar.progress(min(frame_count / total_frames, 1.0))
+
+                cap.release()
+                out.release()
+
+                st.success("Video processing complete!")
+
+                # Display video
+                video_file = open(temp_output_path, "rb")
+                st.video(video_file.read())
+
+                # Download button
+                with open(temp_output_path, "rb") as f:
+                    st.download_button(
+                        "Download Processed Video",
+                        f,
+                        file_name="processed_video.mp4"
+                    )
 # ==============================
 # TAB 1: CAMERA UI
 # ==============================
@@ -411,4 +368,4 @@ if st.session_state.run_camera:
             last_dash_update = current_time
 
     cap.release()
->>>>>>> b0d1189 (Commit WaterHyacinth)
+
