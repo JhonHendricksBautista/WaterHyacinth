@@ -266,6 +266,10 @@ with tab1:
     cam_status = st.empty()
     frame_window = st.empty()
 
+
+if "run_camera" not in st.session_state:
+    st.session_state.run_camera = False
+
 if start_btn:
     st.session_state.run_camera = True
 
@@ -275,26 +279,27 @@ if stop_btn:
 if not st.session_state.run_camera:
     update_dashboard_ui()
 
+
+# ==============================
+# SAFE CAMERA STREAM (NO WHILE LOOP)
+# ==============================
 if st.session_state.run_camera:
+
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         st.error("Camera not accessible. Streamlit Cloud does not support webcam access.")
+        st.session_state.run_camera = False
         st.stop()
-        
-    prev_time = 0
+
+    prev_time = time.time()
     frame_count = 0
     last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
     last_coverage = 0.0
 
-    last_dash_update = time.time()
-    update_dashboard_ui()
+    ret, frame = cap.read()
 
-    while cap.isOpened() and st.session_state.run_camera:
-        ret, frame = cap.read()
-        if not ret:
-            cam_status.error("Camera disconnected.")
-            break
+    if ret:
 
         frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
         frame_count += 1
@@ -303,9 +308,11 @@ if st.session_state.run_camera:
         fps = 1 / (current_time - prev_time) if prev_time else 0
         prev_time = current_time
 
-        mask = last_mask
-
+        # =========================
+        # INFERENCE (INTERMITTENT)
+        # =========================
         if frame_count % INFERENCE_INTERVAL == 0:
+
             results = model.predict(
                 frame,
                 conf=0.5,
@@ -327,31 +334,28 @@ if st.session_state.run_camera:
             last_coverage = (np.sum(mask) / mask.size) * 100
         else:
             mask = last_mask
+            coverage = last_coverage
 
-        coverage = last_coverage
-
-        color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
+        color = (0, 0, 255) if last_coverage > THRESHOLD else (0, 255, 0)
 
         overlay = frame.copy()
-        overlay[mask == 1] = color
+        overlay[last_mask == 1] = color
         overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
 
-        cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv2.putText(overlay, f"Coverage: {last_coverage:.2f}%",
+                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
-        cv2.putText(overlay, f"Status: {'ALERT' if coverage > THRESHOLD else 'SAFE'}",
+        cv2.putText(overlay, f"Status: {'ALERT' if last_coverage > THRESHOLD else 'SAFE'}",
                     (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
         cv2.putText(overlay, f"FPS: {fps:.2f}",
-                    (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+                    (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
         if frame_count % 10 == 0:
-            log_data(coverage, fps)
+            log_data(last_coverage, fps)
 
         frame_window.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
 
-        if time.time() - last_dash_update > DASHBOARD_UPDATE_INTERVAL:
-            update_dashboard_ui()
-            last_dash_update = time.time()
+        update_dashboard_ui()
 
     cap.release()
