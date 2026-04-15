@@ -11,7 +11,7 @@ import plotly.express as px
 # ==============================
 # CONFIG
 # ==============================
-MODEL_PATH = r"C:\Users\Win10\OneDrive\Documents\WaterHyacinth\Mr92.pt"
+MODEL_PATH = "Mr92.pt"
 FRAME_SIZE = 640
 INFERENCE_INTERVAL = 12
 THRESHOLD = 40  # Alert threshold updated to 40%
