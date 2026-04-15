@@ -35,7 +35,7 @@ if "run_camera" not in st.session_state:
 @st.cache_resource
 def load_model():
     model = YOLO(MODEL_PATH)
-    model.to("cpu")  # IMPORTANT for Streamlit Cloud
+    model.to("cpu")
     return model
 
 model = load_model()
@@ -126,7 +126,6 @@ with tab2:
 
             if st.button("Run Detection on Image"):
 
-                # ✅ FIXED YOLO CALL
                 results = model.predict(
                     source=image,
                     conf=0.5,
@@ -140,7 +139,6 @@ with tab2:
                 for r in results:
                     if r.masks is not None:
                         masks = r.masks.data.cpu().numpy()
-
                         for m in masks:
                             m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
                             mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
@@ -165,8 +163,7 @@ with tab2:
                 cv2.putText(overlay, f"Status: {status}", (20, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
-                st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB),
-                         use_container_width=True)
+                st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
 
                 st.success(f"Coverage: {coverage:.2f}% | {status}")
 
@@ -209,7 +206,6 @@ with tab2:
 
                     mask = last_mask
 
-                    # ✅ FIXED YOLO CALL
                     if frame_count % INFERENCE_INTERVAL == 0:
                         results = model.predict(
                             frame,
@@ -224,7 +220,6 @@ with tab2:
                         for r in results:
                             if r.masks is not None:
                                 masks = r.masks.data.cpu().numpy()
-
                                 for m in masks:
                                     m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
                                     mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
@@ -257,7 +252,7 @@ with tab2:
                 st.video(temp_output_path)
 
 # ==============================
-# LIVE CAMERA TAB (ONLY LOGIC FIXED)
+# LIVE CAMERA TAB (FIXED ONLY LOGIC)
 # ==============================
 with tab1:
     st.markdown("<h3 style='text-align: center;'>Live Camera</h3>", unsafe_allow_html=True)
@@ -306,7 +301,6 @@ if st.session_state.run_camera:
 
         mask = last_mask
 
-        # ✅ FIXED YOLO CALL
         if frame_count % INFERENCE_INTERVAL == 0:
             results = model.predict(
                 frame,
@@ -350,8 +344,7 @@ if st.session_state.run_camera:
         if frame_count % 10 == 0:
             log_data(coverage, fps)
 
-        frame_window.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB),
-                           use_container_width=True)
+        frame_window.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
 
         if time.time() - last_dash_update > DASHBOARD_UPDATE_INTERVAL:
             update_dashboard_ui()
