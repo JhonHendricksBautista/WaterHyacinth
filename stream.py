@@ -278,6 +278,10 @@ if not st.session_state.run_camera:
 if st.session_state.run_camera:
     cap = cv2.VideoCapture(0)
 
+    if not cap.isOpened():
+        st.error("Camera not accessible. Streamlit Cloud does not support webcam access.")
+        st.stop()
+        
     prev_time = 0
     frame_count = 0
     last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
