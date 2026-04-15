@@ -203,14 +203,16 @@ with tab2:
 # ==============================
 # LIVE CAMERA (FIXED WITH WEBRTC)
 # ==============================
-from av import VideoFrame
-
 class VideoProcessor(VideoTransformerBase):
-    def recv(self, frame):
+    def __init__(self):
+        self.frame_count = 0
+        self.last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+        self.last_time = time.time()
+
+    def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
 
         img = cv2.resize(img, (FRAME_SIZE, FRAME_SIZE))
-
         self.frame_count += 1
 
         fps = 1 / (time.time() - self.last_time)
@@ -246,7 +248,7 @@ class VideoProcessor(VideoTransformerBase):
         cv2.putText(overlay, f"FPS: {fps:.2f}", (20, 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        return VideoFrame.from_ndarray(overlay, format="bgr24")
+        return overlay
 
 
 with tab1:
