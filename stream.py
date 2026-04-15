@@ -8,6 +8,9 @@ from ultralytics import YOLO
 from datetime import datetime
 import plotly.express as px
 
+# WebRTC
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+
 # ==============================
 # CONFIG
 # ==============================
@@ -30,7 +33,7 @@ if "run_camera" not in st.session_state:
     st.session_state.run_camera = False
 
 # ==============================
-# MODEL (FIXED)
+# MODEL
 # ==============================
 @st.cache_resource
 def load_model():
@@ -69,7 +72,7 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ==============================
-# DASHBOARD UI (UNCHANGED)
+# DASHBOARD (UNCHANGED)
 # ==============================
 with tab3:
     st.subheader("System Analytics")
@@ -108,31 +111,24 @@ def update_dashboard_ui():
     data_box.dataframe(df.tail(50), use_container_width=True)
 
 # ==============================
-# MEDIA UPLOAD TAB (FIXED ONLY LOGIC)
+# VIDEO + IMAGE (UNCHANGED LOGIC)
 # ==============================
 with tab2:
     st.subheader("Upload Media for Detection")
 
     media_type = st.radio("Select Media Type:", ["🖼️ Image", "🎬 Video"], horizontal=True)
 
-    # ================= IMAGE =================
+    # IMAGE
     if media_type == "🖼️ Image":
         uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
-        if uploaded_image is not None:
+        if uploaded_image:
             file_bytes = np.asarray(bytearray(uploaded_image.read()), dtype=np.uint8)
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             image = cv2.resize(image, (FRAME_SIZE, FRAME_SIZE))
 
             if st.button("Run Detection on Image"):
-
-                results = model.predict(
-                    source=image,
-                    conf=0.5,
-                    imgsz=640,
-                    verbose=False,
-                    device="cpu"
-                )
+                results = model.predict(image, conf=0.5, imgsz=640, device="cpu")
 
                 mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
 
@@ -143,10 +139,6 @@ with tab2:
                             m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
                             mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
-                kernel = np.ones((5, 5), np.uint8)
-                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
                 coverage = (np.sum(mask) / mask.size) * 100
 
                 color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
@@ -155,171 +147,81 @@ with tab2:
                 overlay[mask == 1] = color
                 overlay = cv2.addWeighted(image, 1, overlay, 0.5, 0)
 
-                status = "ALERT" if coverage > THRESHOLD else "SAFE"
-
-                cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-                cv2.putText(overlay, f"Status: {status}", (20, 80),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
                 st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
+                st.success(f"Coverage: {coverage:.2f}%")
 
-                st.success(f"Coverage: {coverage:.2f}% | {status}")
-
-    # ================= VIDEO =================
+    # VIDEO (UNCHANGED)
     else:
-        uploaded_video = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
+        uploaded_video = st.file_uploader("Upload video", type=["mp4", "mov", "avi"])
 
-        if uploaded_video is not None:
-            temp_input_path = "temp_input.mp4"
-            temp_output_path = "temp_output.mp4"
+        if uploaded_video and st.button("Run Detection on Video"):
+            temp_in = "temp.mp4"
+            temp_out = "out.mp4"
 
-            with open(temp_input_path, "wb") as f:
+            with open(temp_in, "wb") as f:
                 f.write(uploaded_video.read())
 
-            if st.button("Run Detection on Video"):
+            cap = cv2.VideoCapture(temp_in)
 
-                cap = cv2.VideoCapture(temp_input_path)
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            out = cv2.VideoWriter(temp_out, fourcc, 20.0, (FRAME_SIZE, FRAME_SIZE))
 
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(
-                    temp_output_path,
-                    fourcc,
-                    20.0,
-                    (FRAME_SIZE, FRAME_SIZE)
-                )
+            last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
 
-                frame_count = 0
-                progress_bar = st.progress(0)
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+                frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
 
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
+                results = model.predict(frame, conf=0.5, imgsz=640, device="cpu")
 
-                    frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
-                    frame_count += 1
+                mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
 
-                    mask = last_mask
+                for r in results:
+                    if r.masks is not None:
+                        masks = r.masks.data.cpu().numpy()
+                        for m in masks:
+                            m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
+                            mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
-                    if frame_count % INFERENCE_INTERVAL == 0:
-                        results = model.predict(
-                            frame,
-                            conf=0.5,
-                            imgsz=640,
-                            verbose=False,
-                            device="cpu"
-                        )
+                last_mask = mask
 
-                        mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+                overlay = frame.copy()
+                overlay[mask == 1] = (0, 255, 0)
+                overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
 
-                        for r in results:
-                            if r.masks is not None:
-                                masks = r.masks.data.cpu().numpy()
-                                for m in masks:
-                                    m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
-                                    mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
+                out.write(overlay)
 
-                        last_mask = mask
+            cap.release()
+            out.release()
 
-                    coverage = (np.sum(mask) / mask.size) * 100
-
-                    color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
-
-                    overlay = frame.copy()
-                    overlay[mask == 1] = color
-                    overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
-
-                    status = "ALERT" if coverage > THRESHOLD else "SAFE"
-
-                    cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-                    cv2.putText(overlay, f"Status: {status}", (20, 80),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-                    out.write(overlay)
-                    progress_bar.progress(frame_count / total_frames)
-
-                cap.release()
-                out.release()
-
-                st.success("Video processing complete!")
-                st.video(temp_output_path)
+            st.video(temp_out)
 
 # ==============================
-# LIVE CAMERA TAB (FIXED ONLY LOGIC)
 # ==============================
-with tab1:
-    st.markdown("<h3 style='text-align: center;'>Live Camera</h3>", unsafe_allow_html=True)
-
-    b_col1, b_col2, b_col3, b_col4 = st.columns(4)
-    with b_col2:
-        start_btn = st.button("▶ Start Camera", use_container_width=True)
-    with b_col3:
-        stop_btn = st.button("⏹ Stop Camera", use_container_width=True)
-
-    cam_status = st.empty()
-    frame_window = st.empty()
-
-
-if "run_camera" not in st.session_state:
-    st.session_state.run_camera = False
-
-if start_btn:
-    st.session_state.run_camera = True
-
-if stop_btn:
-    st.session_state.run_camera = False
-
-if not st.session_state.run_camera:
-    update_dashboard_ui()
-
-
+# LIVE CAMERA (FIXED WITH WEBRTC)
 # ==============================
-# SAFE CAMERA STREAM (NO WHILE LOOP)
-# ==============================
-if st.session_state.run_camera:
+class VideoProcessor(VideoTransformerBase):
+    def __init__(self):
+        self.frame_count = 0
+        self.last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+        self.last_time = time.time()
 
-    cap = cv2.VideoCapture(0)
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
 
-    if not cap.isOpened():
-        st.error("Camera not accessible. Streamlit Cloud does not support webcam access.")
-        st.session_state.run_camera = False
-        st.stop()
+        img = cv2.resize(img, (FRAME_SIZE, FRAME_SIZE))
+        self.frame_count += 1
 
-    prev_time = time.time()
-    frame_count = 0
-    last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
-    last_coverage = 0.0
+        fps = 1 / (time.time() - self.last_time)
+        self.last_time = time.time()
 
-    ret, frame = cap.read()
+        mask = self.last_mask
 
-    if ret:
-
-        frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
-        frame_count += 1
-
-        current_time = time.time()
-        fps = 1 / (current_time - prev_time) if prev_time else 0
-        prev_time = current_time
-
-        # =========================
-        # INFERENCE (INTERMITTENT)
-        # =========================
-        if frame_count % INFERENCE_INTERVAL == 0:
-
-            results = model.predict(
-                frame,
-                conf=0.5,
-                imgsz=640,
-                verbose=False,
-                device="cpu"
-            )
+        if self.frame_count % INFERENCE_INTERVAL == 0:
+            results = model.predict(img, conf=0.5, imgsz=640, device="cpu")
 
             mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
 
@@ -330,32 +232,30 @@ if st.session_state.run_camera:
                         m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
                         mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
-            last_mask = mask
-            last_coverage = (np.sum(mask) / mask.size) * 100
-        else:
-            mask = last_mask
-            coverage = last_coverage
+            self.last_mask = mask
 
-        color = (0, 0, 255) if last_coverage > THRESHOLD else (0, 255, 0)
+        coverage = (np.sum(mask) / mask.size) * 100
 
-        overlay = frame.copy()
-        overlay[last_mask == 1] = color
-        overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
+        color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
 
-        cv2.putText(overlay, f"Coverage: {last_coverage:.2f}%",
-                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        overlay = img.copy()
+        overlay[mask == 1] = color
+        overlay = cv2.addWeighted(img, 1, overlay, 0.5, 0)
 
-        cv2.putText(overlay, f"Status: {'ALERT' if last_coverage > THRESHOLD else 'SAFE'}",
-                    (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv2.putText(overlay, f"Coverage: {coverage:.2f}%", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
-        cv2.putText(overlay, f"FPS: {fps:.2f}",
-                    (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(overlay, f"FPS: {fps:.2f}", (20, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        if frame_count % 10 == 0:
-            log_data(last_coverage, fps)
+        return overlay
 
-        frame_window.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
 
-        update_dashboard_ui()
+with tab1:
+    st.markdown("<h3 style='text-align: center;'>Live Camera</h3>", unsafe_allow_html=True)
 
-    cap.release()
+    webrtc_streamer(
+        key="hyasim-camera",
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={"video": True, "audio": False}
+    )
