@@ -177,7 +177,7 @@ with tab2:
         out = cv2.VideoWriter(temp_out, fourcc, fps_input, (FRAME_SIZE, FRAME_SIZE))
 
         if not out.isOpened():
-            st.error("VideoWriter failed. Codec unsupported in deployment.")
+            st.error("VideoWriter failed.")
             st.stop()
 
         while cap.isOpened():
@@ -209,13 +209,18 @@ with tab2:
 
         time.sleep(1)
 
-        if not os.path.exists(temp_out):
-            st.error("Output video was not created.")
-        elif os.path.getsize(temp_out) == 0:
-            st.error("Output video is empty.")
+        if not os.path.exists(temp_out) or os.path.getsize(temp_out) == 0:
+            st.error("Output video failed.")
         else:
-            st.video(temp_out)
+            st.success("Video processed successfully!")
 
+            with open(temp_out, "rb") as f:
+                st.download_button(
+                    label="📥 Download Processed Video",
+                    data=f,
+                    file_name="hyacinth_detection_output.avi",
+                    mime="video/avi"
+                )
 # ==============================
 # LIVE CAMERA (FIXED)
 # ==============================
