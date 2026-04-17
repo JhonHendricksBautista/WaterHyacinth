@@ -158,55 +158,62 @@ with tab2:
                 st.success(f"Coverage: {coverage:.2f}%")
 
     # ================= VIDEO =================
-    else:
-        uploaded_video = st.file_uploader("Upload video", type=["mp4", "mov", "avi"])
+    uploaded_video = st.file_uploader("Upload video", type=["mp4", "mov", "avi"])
 
-        if uploaded_video and st.button("Run Detection on Video"):
-            temp_in = "temp.mp4"
-            temp_out = "out.mp4"
+    if uploaded_video and st.button("Run Detection on Video"):
+        temp_in = "temp.mp4"
+        temp_out = "out.avi"
 
-            with open(temp_in, "wb") as f:
-                f.write(uploaded_video.read())
+        with open(temp_in, "wb") as f:
+            f.write(uploaded_video.read())
 
-            cap = cv2.VideoCapture(temp_in)
+        cap = cv2.VideoCapture(temp_in)
 
-            # FIXED FPS
-            fps_input = cap.get(cv2.CAP_PROP_FPS)
-            if fps_input == 0:
-                fps_input = 20.0
+        fps_input = cap.get(cv2.CAP_PROP_FPS)
+        if fps_input == 0:
+            fps_input = 20.0
 
-            # FIXED CODEC (better browser support)
-            fourcc = cv2.VideoWriter_fourcc(*"avc1")
-            out = cv2.VideoWriter(temp_out, fourcc, fps_input, (FRAME_SIZE, FRAME_SIZE))
+        fourcc = cv2.VideoWriter_fourcc(*"XVID")
+        out = cv2.VideoWriter(temp_out, fourcc, fps_input, (FRAME_SIZE, FRAME_SIZE))
 
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
+        if not out.isOpened():
+            st.error("VideoWriter failed. Codec unsupported in deployment.")
+            st.stop()
 
-                frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-                results = model.predict(frame, conf=0.5, imgsz=640, device="cpu")
+            frame = cv2.resize(frame, (FRAME_SIZE, FRAME_SIZE))
 
-                mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+            results = model.predict(frame, conf=0.5, imgsz=640, device="cpu")
 
-                for r in results:
-                    if r.masks is not None:
-                        masks = r.masks.data.cpu().numpy()
-                        for m in masks:
-                            m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
-                            mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
+            mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
 
-                overlay = frame.copy()
-                overlay[mask == 1] = (0, 255, 0)
-                overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
+            for r in results:
+                if r.masks is not None:
+                    masks = r.masks.data.cpu().numpy()
+                    for m in masks:
+                        m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
+                        mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
-                out.write(overlay)
+            overlay = frame.copy()
+            overlay[mask == 1] = (0, 255, 0)
+            overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
 
-            cap.release()
-            out.release()
+            out.write(overlay)
 
-            time.sleep(1)  # ensure file is ready
+        cap.release()
+        out.release()
+
+        time.sleep(1)
+
+        if not os.path.exists(temp_out):
+            st.error("Output video was not created.")
+        elif os.path.getsize(temp_out) == 0:
+            st.error("Output video is empty.")
+        else:
             st.video(temp_out)
 
 # ==============================
