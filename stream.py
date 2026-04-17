@@ -7,6 +7,7 @@ import time
 from ultralytics import YOLO
 from datetime import datetime
 import plotly.express as px
+from av import VideoFrame
 
 # WebRTC
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
@@ -19,18 +20,15 @@ FRAME_SIZE = 640
 INFERENCE_INTERVAL = 12
 THRESHOLD = 40
 DATA_PATH = "analytics.csv"
-DASHBOARD_UPDATE_INTERVAL = 10
+DASHBOARD_UPDATE_INTERVAL = 5
 
 # ==============================
-# PAGE CONFIG (UNCHANGED UI)
+# PAGE CONFIG
 # ==============================
 st.set_page_config(
     page_title="Hyasim Dashboard",
     layout="wide"
 )
-
-if "run_camera" not in st.session_state:
-    st.session_state.run_camera = False
 
 # ==============================
 # MODEL
@@ -44,7 +42,7 @@ def load_model():
 model = load_model()
 
 # ==============================
-# DATA
+# DATA FUNCTIONS
 # ==============================
 def load_data():
     cols = ["timestamp", "coverage", "fps"]
@@ -61,7 +59,7 @@ def log_data(coverage, fps):
         f.write(f"{datetime.now()},{coverage:.2f},{fps:.2f}\n")
 
 # ==============================
-# TITLE (UNCHANGED UI)
+# TITLE
 # ==============================
 st.title("Hyasim Monitoring System")
 
@@ -72,12 +70,12 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ==============================
-# DASHBOARD (UNCHANGED)
+# DASHBOARD
 # ==============================
 with tab3:
     st.subheader("System Analytics")
-    dash_warning = st.empty()
 
+    dash_warning = st.empty()
     m1, m2 = st.columns(2)
     cov_metric_box = m1.empty()
     fps_metric_box = m2.empty()
@@ -90,7 +88,7 @@ def update_dashboard_ui():
     df = load_data()
 
     if df.empty:
-        dash_warning.warning("No data yet.")
+        dash_warning.warning("No data yet. Run live detection first.")
         return
 
     dash_warning.empty()
@@ -110,15 +108,25 @@ def update_dashboard_ui():
 
     data_box.dataframe(df.tail(50), use_container_width=True)
 
+# AUTO REFRESH DASHBOARD
+if tab3:
+    if st.checkbox("Auto Refresh Dashboard", value=True):
+        update_dashboard_ui()
+        time.sleep(DASHBOARD_UPDATE_INTERVAL)
+        st.rerun()
+    else:
+        if st.button("Refresh Dashboard"):
+            update_dashboard_ui()
+
 # ==============================
-# VIDEO + IMAGE (UNCHANGED LOGIC)
+# MEDIA UPLOAD
 # ==============================
 with tab2:
     st.subheader("Upload Media for Detection")
 
     media_type = st.radio("Select Media Type:", ["🖼️ Image", "🎬 Video"], horizontal=True)
 
-    # IMAGE
+    # ================= IMAGE =================
     if media_type == "🖼️ Image":
         uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
@@ -140,7 +148,6 @@ with tab2:
                             mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
                 coverage = (np.sum(mask) / mask.size) * 100
-
                 color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
 
                 overlay = image.copy()
@@ -150,7 +157,7 @@ with tab2:
                 st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
                 st.success(f"Coverage: {coverage:.2f}%")
 
-    # VIDEO (UNCHANGED)
+    # ================= VIDEO =================
     else:
         uploaded_video = st.file_uploader("Upload video", type=["mp4", "mov", "avi"])
 
@@ -163,10 +170,14 @@ with tab2:
 
             cap = cv2.VideoCapture(temp_in)
 
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            out = cv2.VideoWriter(temp_out, fourcc, 20.0, (FRAME_SIZE, FRAME_SIZE))
+            # FIXED FPS
+            fps_input = cap.get(cv2.CAP_PROP_FPS)
+            if fps_input == 0:
+                fps_input = 20.0
 
-            last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
+            # FIXED CODEC (better browser support)
+            fourcc = cv2.VideoWriter_fourcc(*"avc1")
+            out = cv2.VideoWriter(temp_out, fourcc, fps_input, (FRAME_SIZE, FRAME_SIZE))
 
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -186,8 +197,6 @@ with tab2:
                             m = cv2.resize(m, (FRAME_SIZE, FRAME_SIZE))
                             mask = cv2.bitwise_or(mask, (m > 0.5).astype(np.uint8))
 
-                last_mask = mask
-
                 overlay = frame.copy()
                 overlay[mask == 1] = (0, 255, 0)
                 overlay = cv2.addWeighted(frame, 1, overlay, 0.5, 0)
@@ -197,11 +206,11 @@ with tab2:
             cap.release()
             out.release()
 
+            time.sleep(1)  # ensure file is ready
             st.video(temp_out)
 
 # ==============================
-# ==============================
-# LIVE CAMERA (FIXED WITH WEBRTC)
+# LIVE CAMERA (FIXED)
 # ==============================
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
@@ -209,14 +218,15 @@ class VideoProcessor(VideoTransformerBase):
         self.last_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=np.uint8)
         self.last_time = time.time()
 
-    def transform(self, frame):
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-
         img = cv2.resize(img, (FRAME_SIZE, FRAME_SIZE))
+
         self.frame_count += 1
 
-        fps = 1 / (time.time() - self.last_time)
-        self.last_time = time.time()
+        current_time = time.time()
+        fps = 1 / (current_time - self.last_time)
+        self.last_time = current_time
 
         mask = self.last_mask
 
@@ -234,6 +244,10 @@ class VideoProcessor(VideoTransformerBase):
 
             self.last_mask = mask
 
+            # ✅ LOG DATA FOR DASHBOARD
+            coverage = (np.sum(mask) / mask.size) * 100
+            log_data(coverage, fps)
+
         coverage = (np.sum(mask) / mask.size) * 100
 
         color = (0, 0, 255) if coverage > THRESHOLD else (0, 255, 0)
@@ -248,8 +262,7 @@ class VideoProcessor(VideoTransformerBase):
         cv2.putText(overlay, f"FPS: {fps:.2f}", (20, 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        return overlay
-
+        return VideoFrame.from_ndarray(overlay, format="bgr24")
 
 with tab1:
     st.markdown("<h3 style='text-align: center;'>Live Camera</h3>", unsafe_allow_html=True)
